@@ -1,0 +1,12 @@
+<Bindings>
+  <Binding name="PORTALPRO_AD" category="PortalPro">
+    PortalPro_PostAd()
+  </Binding>
+  <Binding name="CLICK PortalProCastButton:LeftButton" category="PortalPro" />
+  <Binding name="PORTALPRO_ACCEPT" category="PortalPro">
+    PortalPro_AcceptTrade()
+  </Binding>
+  <Binding name="PORTALPRO_PANEL" category="PortalPro">
+    PortalPro_TogglePanel()
+  </Binding>
+</Bindings>
