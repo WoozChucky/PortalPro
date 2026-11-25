@@ -7,13 +7,13 @@ A WoW Forever addon for mages who sell portals. It automates as much of the job 
 - **Finds buyers** in Trade, General, LFG, say, yell and whispers ("WTB port to UC", "inv org").
 - **Invites** buyers and replies to them.
 - **Opens trade** when a buyer in your group is in range.
-- **Checks payment** in the trade window and shows PAID or how much is missing.
+- **Trade dock:** a panel beside the trade window shows the city, the payment against the price, and a Cast button that glows once they've paid.
 - **Cast button** that always holds the portal the group needs.
 - **Kicks** buyers once they went through the portal.
-- **Ledger:** income, tips, short or unpaid buyers, and rune cost, with net profit for today, 7 days and all time.
+- **Ledger:** today, 7 days and all time at a glance, a 7-day chart of income and tips, your best cities, who still owes you, and the full history.
 - **Party thank-you** after each trade, so everyone can see what was paid.
-- **Templates:** the ad and the thank-you are editable in the Messages window.
-- **Windows:** all of them are resizable with the bottom-right grip.
+- **Templates:** the ad and the thank-you are editable on the Messages tab.
+- **One window** with Buyers / Messages / Ledger tabs, resizable with the bottom-right grip. Buyers show in their class colour with the portal's icon.
 
 The addon loads only on mages.
 
@@ -38,7 +38,13 @@ To update, run `git pull` in that folder, then `/reload` in game.
 
 ## Use
 
-Type `/pp` to show or hide the panel and `/pp help` for all commands. Key bindings are in Game Menu > Key Bindings > PortalPro.
+- `/pp` shows or hides the window; `/pp help` lists all commands.
+- The **minimap button** shows how many buyers are waiting. Click it for the window, right-click to post the ad, drag it to move it. `/pp minimap` hides or shows it.
+- `/pp compact` folds the window to one line (buyers waiting, in group, Post ad); again, or `+`, brings it back.
+- A short **pop-up** with a sound tells you when a new buyer shows up.
+- Key bindings are in Game Menu > Key Bindings > PortalPro.
+
+The window and the dock hold the Cast button, which the game locks in combat: showing, hiding or folding them waits until combat ends.
 
 ## Tests
 

@@ -1,13 +1,34 @@
 import sys, pathlib
 import lupa.lua51 as L
+import lupa.lua51 as _lupa   # L is reused for the ledger below
 
 here = pathlib.Path(__file__).parent
 addon = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else here.parent
-lua = L.LuaRuntime(unpack_returned_tuples=True)
-lua.execute((here / "harness.lua").read_text())
-src = (addon / "PortalPro.lua").read_text(encoding="utf-8")
-chunk = lua.eval("function(src) local f, e = loadstring(src, 'PortalPro.lua'); if not f then error(e) end; return f end")(src)
-chunk("PortalPro")
+HARNESS = (here / "harness.lua").read_text(encoding="utf-8")
+
+def toc_files():
+    """The .lua files the game loads, in the .toc's order."""
+    out = []
+    for line in (addon / "PortalPro.toc").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and line.lower().endswith(".lua"):
+            out.append(line.replace("\\", "/"))
+    return out
+FILES = toc_files()
+
+def runtime(harness=None, pre=""):
+    """A fresh game: the fake API, then every file of the .toc sharing one private table, as the game does."""
+    lua = _lupa.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(pre + "\n" + (harness if harness is not None else HARNESS))
+    lua.execute("T.baseGlobals = {}; for k in pairs(_G) do T.baseGlobals[k] = true end")
+    load = lua.eval("function(src, path, ns) local f, e = loadstring(src, path); if not f then error(e) end; f('PortalPro', ns) end")
+    ns = lua.table()
+    for f in FILES:
+        load((addon / f).read_text(encoding="utf-8"), f, ns)
+    lua.globals().T.ns = ns
+    return lua
+
+lua = runtime()
 
 fails = 0
 def check(name, ok, extra=""):
@@ -91,10 +112,17 @@ T.npc = "Bob"; TradeFrame = lua.globals().TradeFrame; TradeFrame.shown = True
 fire("TRADE_SHOW")
 T.tradeMoney = 2500
 fire("TRADE_MONEY_CHANGED")
+dock = lua.globals().PortalProDock
+st = T.ns.dockState()
+check("dock shows with the trade", dock is not None and dock.shown)
+check("dock: city and payment", st.city.key == "uc" and st.owed == 5000 and st.got == 2500 and not st.paid, (st.owed, st.got))
+check("dock cast matches panel cast", lua.globals().PortalProDockCast.attrs["spell"] == "Portal: Undercity"
+      and lua.globals().PortalProDockCast.attrs["spell"] == lua.globals().PortalProCastButton.attrs["spell"])
 PP.accept()
 check("underpaid: first accept press only warns", len(called("AcceptTrade")) == 0)
 T.tradeMoney = 5000
 fire("TRADE_MONEY_CHANGED")
+check("dock: paid", T.ns.dockState().paid == True)
 PP.accept()
 check("paid: accept goes through", len(called("AcceptTrade")) == 1)
 TradeFrame.shown = False
@@ -141,7 +169,10 @@ check("whisper buyer invited + replied", ["InviteUnit", "Ann"] in called("Invite
 fire("CHAT_MSG_WHISPER", "port to darn", "Cid-Forever")
 check("city we can't do: no invite", ["InviteUnit", "Cid"] not in called("InviteUnit"))
 fire("CHAT_MSG_SYSTEM", "Ann declines your group invitation.")
-check("decline noted", PP and lua.eval("PortalPro") is not None)
+ann = T.ns.buyers["ann"]
+check("decline noted", ann is not None and ann.state == "declined", ann and ann.state)
+fire("CHAT_MSG_SYSTEM", "Cannot find player 'Cid'.")
+check("unknown player dropped", T.ns.buyers["cid"] is None)
 
 # --- slash commands
 SlashCmdList.PORTALPRO("price 2g")
@@ -199,7 +230,7 @@ lf = lua.globals().PortalProLedger
 check("ledger window shows", lf.shown == True)
 texts = [lf.rows[i].text or "" for i in range(1, 13)]
 check("ledger lists Eve's late payment first", "Eve paid" in texts[0], texts[:3])
-check("ledger net all-time cell", "13000" not in (lf.cells[6][3].text or "") and "1g 30s" in (lf.cells[6][3].text or ""), lf.cells[6][3].text)
+check("ledger net all-time tile", "1g 30s" in (lf.tiles[3].value.text or ""), lf.tiles[3].value.text)
 SlashCmdList.PORTALPRO("stats")
 check("/pp stats prints net", any("net 1g 30s" in p for p in T.prints.values()), list(T.prints.values())[-3:])
 SlashCmdList.PORTALPRO("ledger reset")
@@ -256,29 +287,22 @@ check("checkbox turns thanks off", db.thanks == False)
 cb.checked = True; cb.scripts.OnClick(cb)
 check("checkbox turns thanks on", db.thanks == True)
 
-# --- resizing
+# --- resizing: one window, its pages follow its size
 pnl = lua.globals().PortalProPanel
-check("panel shows 6 buyer rows at its standard size", pnl.visibleRows == 6, pnl.visibleRows)
-pnl.SetSize(pnl, 360, 500)
-check("taller panel shows more rows", pnl.visibleRows == 17, pnl.visibleRows)
-check("top buttons share the width", pnl.ad.w == 168 and pnl.accept.w == 168, (pnl.ad.w, pnl.accept.w))
+pnl.SetSize(pnl, 460, 420); low = pnl.visibleRows
+pnl.SetSize(pnl, 460, 640); high = pnl.visibleRows
+check("taller window shows more buyer rows", 1 <= low < high, (low, high))
+check("top buttons share the width", pnl.ad.w == pnl.accept.w and pnl.ad.w > 100, (pnl.ad.w, pnl.accept.w))
 pnl.grip.scripts.OnMouseDown(pnl.grip, "LeftButton"); pnl.grip.scripts.OnMouseUp(pnl.grip)
-check("panel size saved", db.frames.panel.w == 360 and db.frames.panel.h == 500, (db.frames.panel.w, db.frames.panel.h))
+check("window size saved", db.frames.main.w == 460 and db.frames.main.h == 640, db.frames.main and (db.frames.main.w, db.frames.main.h))
 T.combat = True; T.sizing = None
 pnl.grip.scripts.OnMouseDown(pnl.grip, "LeftButton")
-check("no panel resize in combat", T.sizing is None and "can't be resized in combat" in T.prints[len(T.prints)])
+check("no window resize in combat", T.sizing is None)
 T.combat = False
-
 lf = lua.globals().PortalProLedger
-lf.SetSize(lf, 500, 600)
-check("taller ledger shows more history", lf.visible == 22, lf.visible)
-lf.grip.scripts.OnMouseDown(lf.grip, "LeftButton"); lf.grip.scripts.OnMouseUp(lf.grip)
-check("ledger size saved", db.frames.ledger.h == 600)
-lf.scripts.OnDragStop(lf)
-check("ledger place saved", db.frames.ledger.point is not None)
-mf2 = lua.globals().PortalProMessages
-mf2.SetSize(mf2, 700, 300)
-check("messages window resizes", mf2.w == 700)
+pnl.SetSize(pnl, 460, 420); few = lf.visible
+pnl.SetSize(pnl, 460, 700); more = lf.visible
+check("taller window shows more ledger history", few < more, (few, more))
 
 import lupa.lua51 as LUPA
 # --- Forever surnames: "Nx Thearabian" yells, joins, trades, goes through
@@ -296,10 +320,150 @@ before = db.totals.income
 sale_trade("Nx Thearabian", 5000)
 check("surname buyer's payment counted", db.totals.income == before + 5000, (before, db.totals.income))
 
+# --- one window with tabs: Buyers / Messages / Ledger
+SL = lua.globals().SlashCmdList.PORTALPRO
+pages = {"buyers": lua.globals().PortalProBuyers, "messages": lua.globals().PortalProMessages, "ledger": lua.globals().PortalProLedger}
+def shown_pages(): return sorted(k for k, f in pages.items() if f is not None and f.shown)
+pnl = lua.globals().PortalProPanel
+SL("ledger")
+check("/pp ledger shows ledger tab", pnl.shown and shown_pages() == ["ledger"], (pnl.shown, shown_pages()))
+SL("messages")
+check("tabs: one page at a time", shown_pages() == ["messages"], shown_pages())
+SL("messages")
+check("/pp messages again hides the window", not pnl.shown)
+SL("")
+check("/pp shows it on the Buyers tab", pnl.shown and shown_pages() == ["buyers"], shown_pages())
+
+# --- buyer rows: class colour, the city's portal icon
+def row_for(key):
+    for i in range(1, 21):
+        r = T.ns.rows[i]
+        if r and r.shown and r.buyer and r.buyer.key == key: return r
+T.guids["Player-1-0CD"] = "PRIEST"
+T.guids["Player-1-0AB"] = "MAGE"
+fire("CHAT_MSG_WHISPER", "inv uc", "Holy Bread", "", "", "", "", 0, 0, "", 0, 7, "Player-1-0AB")
+hb = row_for("holy bread")
+check("buyer row class colour", hb is not None and "3fc7eb" in (hb.name.text or ""), hb and hb.name.text)
+check("buyer row portal icon", hb is not None and hb.icon.icon == "tex:11418", hb and hb.icon.icon)
+check("buyer row says city and where", hb is not None and "Undercity" in (hb.sub.text or "") and "whisper" in (hb.sub.text or ""), hb and hb.sub.text)
+fire("CHAT_MSG_WHISPER", "inv tb", "Plain Jane")
+pj = row_for("plain jane")
+check("buyer row without GUID is white", pj is not None and "|cffffffff" in (pj.name.text or ""), pj and pj.name.text)
+
+# --- the ledger dashboard
+real = db.ledger
+day0 = T.ns.dayStart()
+def e(d): return lua.table_from(d)
+db.ledger = lua.table(
+    e({"t": day0 + 3600, "k": "trade", "n": "A", "c": "uc", "p": 5000, "g": 6000, "tip": 1000}),
+    e({"t": day0 + 3700, "k": "cast", "c": "uc", "r": 2000, "b": 1}),
+    e({"t": day0 - 2 * 86400, "k": "trade", "n": "B", "c": "tb", "p": 5000, "g": 5000, "tip": 0}),
+    e({"t": day0 - 2 * 86400 + 60, "k": "trade", "n": "C", "c": "tb", "p": 5000, "g": 5000, "tip": 0}),
+    e({"t": day0 - 9 * 86400, "k": "trade", "n": "D", "c": "org", "p": 5000, "g": 99999, "tip": 0}),
+    e({"t": day0 - 3600, "k": "served", "n": "E", "c": "uc", "p": 5000, "g": 0}),
+    e({"t": day0 - 1800, "k": "served", "n": "F", "c": "uc", "p": 5000, "g": 2000}),
+)
+days = T.ns.ledgerDays(7)
+got = [(days[i].income, days[i].tips) for i in range(1, 8)]
+check("ledgerDays groups by day", got[6] == (6000, 1000) and got[4] == (10000, 0) and sum(x[0] for x in got) == 16000, got)
+best = T.ns.bestSellers(3)
+names = [(best[i].label, best[i].count, best[i].income) for i in range(1, len(best) + 1)]
+check("bestSellers by city", names[0] == ("Orgrimmar", 1, 99999) and names[1] == ("Thunder Bluff", 2, 10000), names)
+n, c = T.ns.owing()
+check("owing counts short and unpaid", (n, c) == (2, 8000), (n, c))
+SL("ledger")
+lf = lua.globals().PortalProLedger
+check("ledger tab best sellers", "Orgrimmar" in (lf.best[1].text or ""), lf.best[1].text)
+check("ledger tab owing line", T.ns.money(8000) in (lf.owing.text or ""), lf.owing.text)
+db.ledger = real
+SL("")
+
+# --- the dock: only for portal buyers and group members; below EnchantPro's dock; combat
+T.npc = "Some Stranger"; TradeFrame.shown = True; T.tradeMoney = 0
+fire("TRADE_SHOW")
+dock = lua.globals().PortalProDock
+check("dock: not for a stranger", not dock.shown and T.ns.dockState() is None)
+fire("TRADE_CLOSED")
+epdock = lua.eval("CreateFrame('Frame', 'EnchantProDock')")
+T.npc = "Holy Bread"
+fire("TRADE_SHOW")
+same = lua.eval("function(a, b) return a == b end")
+check("dock sits below EnchantPro's", dock.shown and dock.point is not None and same(dock.point[2], epdock) and dock.point[1] == "TOPLEFT" and dock.point[3] == "BOTTOMLEFT",
+      dock.point and (dock.point[1], dock.point[3]))
+lua.globals().EnchantProDock = None
+T.combat = True
+fire("TRADE_CLOSED")
+check("dock in combat waits", dock.shown)
+T.combat = False
+fire("PLAYER_REGEN_ENABLED")
+check("dock hides after combat", not dock.shown)
+
+# --- minimap button, compact bar, new-buyer pop-up
+for k in list(T.ns.buyers.keys()): T.ns.buyers[k] = None
+T.ns.refresh()
+mm = lua.globals().PortalProMinimapButton
+toast = lua.globals().PortalProToast
+check("badge hidden at 0", mm is not None and not mm.badge.shown)
+fire("CHAT_MSG_WHISPER", "inv uc", "Ann Toast")
+check("toast on new buyer", toast.shown and "Undercity" in (toast.what.text or "") and "Ann Toast" in (toast.who.text or ""), (toast.shown, toast.what.text))
+fire("CHAT_MSG_WHISPER", "inv tb", "Ben Badge")
+check("badge counts buyers", mm.badge.shown and mm.badge.text.text == "2", mm.badge.text.text)
+fire("CHAT_MSG_WHISPER", "inv uc", "Ann Toast")
+check("toast once per buyer", toast.key == "ben badge", toast.key)
+advance(7); T.runTimers()
+check("toast hides after 6 s", not toast.shown)
+SL("compact")
+bar = lua.globals().PortalProCompact
+check("compact folds", bar.shown and not pnl.shown and "2 buyers" in (bar.text.text or ""), (bar.shown, pnl.shown, bar.text.text))
+SL("compact")
+check("compact unfolds", not bar.shown and pnl.shown)
+SL("minimap")
+check("/pp minimap hides the button", not mm.shown)
+SL("minimap")
+check("/pp minimap shows it again", mm.shown)
+T.combat = True
+SL("")
+check("toggle in combat waits", pnl.shown)
+T.combat = False
+fire("PLAYER_REGEN_ENABLED")
+check("hidden after combat", not pnl.shown)
+SL("")
+T.combat = True
+tb3 = pnl.tabs.buttons[3]
+tb3.scripts.OnClick(tb3)
+check("tab click in combat waits", shown_pages() == ["buyers"], shown_pages())
+T.combat = False
+fire("PLAYER_REGEN_ENABLED")
+check("tab switches after combat", pnl.shown and shown_pages() == ["ledger"], (pnl.shown, shown_pages()))
+PP.showTab("buyers")
+
+# --- saved settings from 0.6.0 (separate windows) load cleanly
+lua4 = runtime(pre="PortalProDB = { point = { 'CENTER', 'CENTER', 300, 0 }, shown = true, frames = { ledger = { point = { 'CENTER', 'CENTER', 10, 10 }, w = 430, h = 430 }, messages = { w = 480, h = 250 }, panel = { w = 300, h = 290 } } }")
+lua4.globals().T.fire("ADDON_LOADED", "PortalPro"); lua4.globals().T.fire("PLAYER_LOGIN")
+check("old window saves load", lua4.globals().PortalProPanel is not None and lua4.globals().PortalProPanel.tabs is not None)
+
+# --- the code: every file in the .toc, small files, no globals beyond its own names, the shared kit in step
+import re
+on_disk = sorted(q.relative_to(addon).as_posix() for q in addon.rglob("*.lua")
+                 if "tests" not in q.relative_to(addon).parts and not q.relative_to(addon).parts[0].startswith("."))
+check("toc lists every .lua file", sorted(FILES) == on_disk, (FILES, on_disk))
+new_globals = [k for k in lua.eval("function() local t = {} for k in pairs(_G) do if not T.baseGlobals[k] then t[#t + 1] = tostring(k) end end return t end")().values()
+               if not re.match(r"^(PortalPro|SLASH_|BINDING_)", k)]
+check("no stray globals", not new_globals, new_globals)
+sizes = {f: len((addon / f).read_text(encoding="utf-8").splitlines()) for f in FILES}
+check("files stay small", all(n < 700 for n in sizes.values()), sizes)
+bad_art = [f for f in FILES if re.search(r'"Interface\\[A-Za-z]', (addon / f).read_text(encoding="utf-8"))]
+check("art paths keep their backslashes", not bad_art, bad_art)
+check("minimap button default angle", db.ui.minimapAngle == 225, db.ui.minimapAngle)
+check("compact bar default place", lua.globals().PortalProCompact.point[5] == -118, lua.globals().PortalProCompact.point[5])
+sibling = addon.parent / "EnchantPro" / "UI" / "Kit.lua"
+if sibling.exists():
+    check("kit copies identical", (addon / "UI" / "Kit.lua").exists() and (addon / "UI" / "Kit.lua").read_bytes() == sibling.read_bytes())
+else:
+    print("SKIP kit copies identical (no EnchantPro next to this addon)")
+
 # --- character without portals (under level 40): buyers listed, nobody invited
-lua3 = LUPA.LuaRuntime(unpack_returned_tuples=True)
-lua3.execute((here / "harness.lua").read_text() + "\nfunction IsPlayerSpell() return false end")
-lua3.eval("function(src) return loadstring(src, 'PortalPro.lua') end")(src)("PortalPro")
+lua3 = runtime(HARNESS + "\nfunction IsPlayerSpell() return false end")
 T3 = lua3.globals().T
 T3.fire("ADDON_LOADED", "PortalPro"); T3.fire("PLAYER_LOGIN")
 T3.fire("CHAT_MSG_YELL", "WTB UC PORTAL", "Nx Thearabian")
@@ -311,10 +475,7 @@ check("no portals: cast button says level 40", lua3.globals().PortalProCastButto
 
 # --- not a mage: nothing at all
 import lupa.lua51 as LUPA
-lua2 = LUPA.LuaRuntime(unpack_returned_tuples=True)
-lua2.execute("T = nil")
-lua2.execute((here / "harness.lua").read_text().replace('T.class = T.class or "MAGE"', 'T.class = "WARRIOR"'))
-lua2.eval("function(src) return loadstring(src, 'PortalPro.lua') end")(src)("PortalPro")
+lua2 = runtime(HARNESS.replace('T.class = T.class or "MAGE"', 'T.class = "WARRIOR"'), pre="T = nil")
 T2 = lua2.globals().T
 T2.fire("ADDON_LOADED", "PortalPro")
 T2.fire("PLAYER_LOGIN")
