@@ -59,10 +59,11 @@ local function request(sender, text, src, where, guid)
   b.cantPort = cantPort or nil
   local t = now()
   if b.state == "done" and t - (b.doneAt or 0) < 120 then return end
-  if b.state == "done" then b.state, b.paid, b.tradeTries = "asked", nil, 0 end
+  if b.state == "done" then b.state, b.paid, b.tradeTries, b.n = "asked", nil, 0, nil end   -- a new order, at the back
   local cityChanged = city and b.city ~= city.key
   if city then b.city = city.key end
   b.at, b.src, b.where = t, src, where
+  ns.enqueue(b)
   if not b.class and type(guid) == "string" and not isSecret(guid) and guid ~= "" then
     local ok, _, cls = pcall(GetPlayerInfoByGUID, guid)
     if ok and type(cls) == "string" then b.class = cls end
@@ -97,6 +98,8 @@ local function request(sender, text, src, where, guid)
     else
       line = "Portals " .. price .. "." .. (invitedNow and " Invite sent - tell me the city!" or " Which city?")
     end
+    local p = ns.place(b)
+    if p and p >= 2 then line = line .. " You're #" .. p .. " in the queue." end
     if whisper(b, line) then b.replied = true end
   end
   if ns.refresh then ns.refresh() end

@@ -64,18 +64,6 @@ local function tick()
   if not ns.DB then return end
   local t = now()
 
-  -- open trade with a buyer who joined, is near and has not paid
-  local tf = _G.TradeFrame
-  if ns.DB.autoTrade and not PP.tradeBlocked and not PP.trade and not (tf and tf:IsShown()) and not InCombatLockdown() then
-    for _, b in pairs(buyers) do
-      if b.unit and b.state == "group" and priceFor(b.city) > 0 and (b.tradeTries or 0) < 3
-         and t - (b.tradeTry or 0) > 8 and t - (b.joinedAt or t) > 1.5 then
-        local near = safe(CheckInteractDistance, b.unit, 2)
-        if near then openTrade(b); break end
-      end
-    end
-  end
-
   -- after a portal: buyers who were near and are gone took it
   if PP.portalAt and t - PP.portalAt < 90 then
     local myMap = mapOf("player")
@@ -100,12 +88,12 @@ local function tick()
     end
   end
 
-  -- drop old lines: asked and never came (5 min), invited and never joined (2 min), done (2 min)
+  -- drop old lines: waiting orders quiet for 2 hours, ported (2 min), a city you have no portal to (5 min)
   for key, b in pairs(buyers) do
     if not b.unit then
       if (b.state == "done" and t - (b.doneAt or 0) > 120)
-         or (b.state == "invited" and t - (b.invitedAt or 0) > 120)
-         or ((b.state == "asked" or b.state == "left" or b.state == "busy" or b.state == "declined") and t - b.at > 300) then
+         or ns.quiet(b, t)
+         or (not ns.isWaiting(b) and b.state ~= "done" and t - b.at > 300) then
         buyers[key] = nil
       end
     end
@@ -174,6 +162,8 @@ local function onRoster()
   if ns.refresh then ns.refresh() end
 end
 
+ns.onRoster = onRoster
+
 local function onCast(spellID)
   local c = CITY_BY_SPELL[spellID]
   if not c then return end
@@ -221,6 +211,7 @@ local f = CreateFrame("Frame")
 local function listen(ev) pcall(f.RegisterEvent, f, ev) end
 listen("ADDON_LOADED")
 listen("PLAYER_LOGIN")
+listen("PLAYER_LOGOUT")
 
 local function registerAll()
   for _, ev in ipairs({ "CHAT_MSG_CHANNEL", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_WHISPER", "GROUP_ROSTER_UPDATE",
@@ -249,6 +240,7 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
     buildPanel()
     ns.buildDock()
     ns.buildExtras()
+    ns.loadQueue()
     registerAll()
     updateCast()
     C_Timer.NewTicker(0.5, tick)
@@ -257,6 +249,8 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
     else
       say("Ready: " .. #ns.known .. " portals, " .. runes() .. " runes, price " .. money(ns.DB.price) .. ". /pp help")
     end
+  elseif ev == "PLAYER_LOGOUT" then
+    if not PP.off then ns.saveQueue() end
   elseif ev == "CHAT_MSG_CHANNEL" then
     if ns.DB.listen then
       local where = (not isSecret(a9) and type(a9) == "string" and a9) or (not isSecret(a4) and type(a4) == "string" and a4) or "chat"
@@ -302,7 +296,6 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
     if a1 == ADDON then
       local fn = tostring(a2)
       if string.find(fn, "InitiateTrade", 1, true) or string.find(fn, "UNKNOWN", 1, true) then
-        PP.tradeBlocked = true
         say("The game does not let addons open trade by themselves here - click the buyer's line to open it.")
       else
         say("The game blocked " .. fn .. ". Tell the author.")
@@ -332,7 +325,7 @@ local HELP = {
   "/pp ad <text> - your own ad; {route}, {here}, {cities} and {price} fill in. /pp ad reset - the standard ad",
   "/pp cd 90 - seconds between ads",
   "/pp thanks - party thank-you after a trade on / off.  /pp thanks <text> - your own; {name} {got} {city} {tip} {price} fill in.  /pp thanks reset",
-  "/pp listen | invite | whisperinv | whisper | trade | kick | sound - turn one on / off",
+  "/pp listen | invite | whisperinv | whisper | kick | sound - turn one on / off",
   "/pp ledger - the ledger window.  /pp stats - today / 7 days / all time in chat",
   "/pp runecost 18s - what a Rune of Portals costs you (read at the vendor by itself)",
   "/pp ledger reset - delete the ledger (asks twice)",
@@ -342,7 +335,7 @@ local HELP = {
 }
 
 local SWITCHES = { listen = "listen", invite = "inviteAsks", whisperinv = "autoInvite", whisper = "whisper",
-  trade = "autoTrade", kick = "autoKick", sound = "sound" }
+  kick = "autoKick", sound = "sound" }
 
 SLASH_PORTALPRO1 = "/pp"
 SLASH_PORTALPRO2 = "/portalpro"
@@ -402,7 +395,6 @@ SlashCmdList.PORTALPRO = function(msg)
   elseif SWITCHES[cmd] then
     local k = SWITCHES[cmd]
     ns.DB[k] = not ns.DB[k]
-    if k == "autoTrade" then PP.tradeBlocked = nil end
     say(cmd .. ": " .. onOff(ns.DB[k]))
     ns.refresh()
   elseif cmd == "ledger" or cmd == "stats" then

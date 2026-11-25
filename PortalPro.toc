@@ -1,13 +1,14 @@
 ## Interface: 16001
 ## Title: PortalPro
 ## Notes: Sell mage portals: finds buyers in chat, invites them, opens trade, checks payment, picks the right portal and kicks buyers once they are through. /pp
-## Version: 0.7.0
+## Version: 0.8.0
 ## SavedVariables: PortalProDB
 
 Core.lua
 Chat.lua
 Send.lua
 Party.lua
+Queue.lua
 Ledger.lua
 Buyers.lua
 Trade.lua

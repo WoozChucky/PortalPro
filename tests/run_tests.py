@@ -106,6 +106,10 @@ advance(2); T.tick()
 check("no trade when out of range", len(called("InitiateTrade")) == 0)
 T.near["party1"] = True
 T.tick()
+check("no trade by itself in range", len(called("InitiateTrade")) == 0, called("InitiateTrade"))
+lua.globals().PortalPro.togglePanel(True); T.ns.refresh()
+_r = [T.ns.rows[i] for i in range(1, 21) if lua.eval("rawget")(T.ns.rows[i], "buyer") is not None and lua.eval("rawget")(T.ns.rows[i], "buyer").key == "bob"][0]
+_r.scripts.OnClick(_r, "LeftButton")
 check("trade opened when in range", ["InitiateTrade", "party1"] in called("InitiateTrade"), called("InitiateTrade"))
 
 T.npc = "Bob"; TradeFrame = lua.globals().TradeFrame; TradeFrame.shown = True
@@ -314,7 +318,9 @@ check("surname buyer invited by full name", called("InviteUnit")[-1] == ["Invite
 T.party[1] = "Nx Thearabian"; T.visible["party1"] = True; T.near["party1"] = True
 fire("GROUP_ROSTER_UPDATE")
 check("surname buyer seen in group", lua.eval("PortalPro").castCity.key == "uc")
-advance(2); T.tick()
+advance(2); T.tick(); T.ns.refresh()
+_r = [T.ns.rows[i] for i in range(1, 21) if lua.eval("rawget")(T.ns.rows[i], "buyer") is not None and lua.eval("rawget")(T.ns.rows[i], "buyer").key == "nx thearabian"][0]
+_r.scripts.OnClick(_r, "LeftButton")
 check("trade opened with surname buyer", called("InitiateTrade")[-1] == ["InitiateTrade", "party1"])
 before = db.totals.income
 sale_trade("Nx Thearabian", 5000)
@@ -414,7 +420,7 @@ advance(7); T.runTimers()
 check("toast hides after 6 s", not toast.shown)
 SL("compact")
 bar = lua.globals().PortalProCompact
-check("compact folds", bar.shown and not pnl.shown and "2 buyers" in (bar.text.text or ""), (bar.shown, pnl.shown, bar.text.text))
+check("compact folds", bar.shown and not pnl.shown and "2 in queue" in (bar.text.text or ""), (bar.shown, pnl.shown, bar.text.text))
 SL("compact")
 check("compact unfolds", not bar.shown and pnl.shown)
 SL("minimap")
@@ -452,7 +458,7 @@ new_globals = [k for k in lua.eval("function() local t = {} for k in pairs(_G) d
 check("no stray globals", not new_globals, new_globals)
 sizes = {f: len((addon / f).read_text(encoding="utf-8").splitlines()) for f in FILES}
 check("files stay small", all(n < 700 for n in sizes.values()), sizes)
-bad_art = [f for f in FILES if re.search(r'"Interface\\[A-Za-z]', (addon / f).read_text(encoding="utf-8"))]
+bad_art = [f for f in FILES if re.search(r'Interface\\(?!\\)', (addon / f).read_text(encoding="utf-8"))]
 check("art paths keep their backslashes", not bad_art, bad_art)
 check("minimap button default angle", db.ui.minimapAngle == 225, db.ui.minimapAngle)
 check("compact bar default place", lua.globals().PortalProCompact.point[5] == -118, lua.globals().PortalProCompact.point[5])
@@ -489,6 +495,117 @@ lua2.globals().SlashCmdList.PORTALPRO("price 2g")
 check("warrior: /pp says mage only", "only works on a mage" in T2.prints[len(T2.prints)] and lua2.globals().PortalProDB.price == 5000)
 lua2.globals().PortalPro_PostAd(); lua2.globals().PortalPro_TogglePanel(); lua2.globals().PortalPro_AcceptTrade()
 check("warrior: keybinds do nothing", len(T2.calls) == 0)
+
+
+# --- the queue: numbers, order, lifetime, saved, click to trade
+import re as _re
+
+def lua_src(v):
+    t = LUPA.lua_type(v)
+    if t == "table":
+        parts = []
+        for k, x in v.items():
+            key = ("[%d]" % k) if isinstance(k, int) else ("[%r]" % k).replace("'", '"')
+            parts.append(key + " = " + lua_src(x))
+        return "{ " + ", ".join(parts) + " }"
+    if isinstance(v, bool): return "true" if v else "false"
+    if isinstance(v, (int, float)): return repr(v)
+    if isinstance(v, str): return '"' + v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+    return "nil"
+def row_of(ns_, key, rawget_):
+    for i in range(1, 21):
+        r = ns_.rows[i]
+        b = rawget_(r, "buyer")
+        if b is not None and b.key == key: return r
+    return None
+lq = runtime()
+GQ, TQ = lq.globals(), lq.globals().T
+rg = lq.eval("rawget")
+TQ.restricted = False
+TQ.fire("ADDON_LOADED", "PortalPro"); TQ.fire("PLAYER_LOGIN")
+NQ, qbq = TQ.ns, TQ.ns.buyers
+def calledq(name): return [list(c.values()) for c in TQ.called(name).values()]
+TQ.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+TQ.time = TQ.time + 5
+TQ.fire("CHAT_MSG_WHISPER", "inv tb pls", "Ben Yo")
+check("queue: numbered in the order they asked", (qbq["ann zed"].n, qbq["ben yo"].n) == (1, 2), (qbq["ann zed"].n, qbq["ben yo"].n))
+wl = [c[1] for c in calledq("SendChatMessage") if c[2] == "WHISPER"]
+check("reply: the second hears their place", wl and "You're #2 in the queue." in wl[-1] and "in the queue" not in wl[0], wl)
+TQ.time = TQ.time + 40
+TQ.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+check("queue: asking again keeps the number", qbq["ann zed"].n == 1 and NQ.place(qbq["ann zed"]) == 1)
+TQ.time = TQ.time + 6 * 60
+TQ.tick()
+check("queue: still there after 6 minutes", qbq["ann zed"] is not None and qbq["ben yo"] is not None)
+# a group member in range: no trade by itself, a click trades
+TQ.party[1] = "Ben Yo"; TQ.fire("GROUP_ROSTER_UPDATE")
+TQ.near["party1"] = True
+TQ.time = TQ.time + 3
+TQ.tick()
+check("no trade opens by itself", calledq("InitiateTrade") == [], calledq("InitiateTrade"))
+GQ.PortalPro.togglePanel(True)
+NQ.refresh()
+brow = row_of(NQ, "ben yo", rg)
+check("rows: the first in range is marked", brow.marked == True and row_of(NQ, "ann zed", rg).marked == False)
+brow.scripts.OnClick(brow, "LeftButton")
+check("a click trades with the buyer in range", calledq("InitiateTrade") == [["InitiateTrade", "party1"]], calledq("InitiateTrade"))
+TQ.fire("CHAT_MSG_SYSTEM", "Ann Zed declines your group invitation.")
+n_inv = len(calledq("InviteUnit"))
+arow = row_of(NQ, "ann zed", rg)
+arow.scripts.OnClick(arow, "LeftButton")
+check("a click on someone not in the group invites", len(calledq("InviteUnit")) == n_inv + 1, calledq("InviteUnit")[-1:])
+def rname(i): return _re.sub(r"\|c[0-9a-f]{8}|\|r", "", NQ.rows[i].name.text or "")
+check("rows: numbered", rname(1).startswith("#1 Ann Zed") and rname(2).startswith("#2 Ben Yo"), (rname(1), rname(2)))
+for i in range(1, 26):
+    TQ.fire("CHAT_MSG_CHANNEL", "WTB port to uc", "C%02d Qx" % i, "", "2. Trade - City", "", "", 2, 2, "Trade - City")
+NQ.refresh()
+pg = GQ.PortalProBuyers
+for _ in range(3): pg.scripts.OnMouseWheel(pg, -1)
+check("rows: the wheel scrolls the queue", rname(1).startswith("#4 "), rname(1))
+check("bar: counts the queue", (GQ.PortalProCompact.text.text or "").startswith("27 in queue · 1 in group"), GQ.PortalProCompact.text.text)
+keysq = [NQ.toggles[i].key for i in range(1, len(NQ.toggles) + 1)]
+check("no Trade switch any more", "autoTrade" not in keysq, keysq)
+# a client restart: GetTime starts over, the wall clock moved on 60 s
+wait_before = TQ.time - qbq["ann zed"].since
+TQ.fire("PLAYER_LOGOUT")
+saved_wall = GQ.time()
+lr = runtime(pre="PortalProDB = " + lua_src(GQ.PortalProDB))
+GR, TR = lr.globals(), lr.globals().T
+TR.time = 100; TR.wallOffset = saved_wall + 60 - 100
+TR.fire("ADDON_LOADED", "PortalPro"); TR.fire("PLAYER_LOGIN")
+qbr = TR.ns.buyers
+okr = qbr["ann zed"] is not None and qbr["ben yo"] is not None
+check("restore: the queue is back after a restart", okr and (qbr["ann zed"].n, qbr["ben yo"].n) == (1, 2), okr and (qbr["ann zed"].n, qbr["ben yo"].n))
+check("restore: waiting time carries on", okr and abs((TR.time - qbr["ann zed"].since) - (wait_before + 60)) <= 1)
+check("restore: not in the group any more", okr and qbr["ben yo"].unit is None)
+TR.fire("CHAT_MSG_WHISPER", "inv uc pls", "Dee Dx")
+check("restore: numbers carry on", qbr["dee dx"].n == 28, qbr["dee dx"].n)
+TR.time = TR.time + 7201
+TR.tick()
+check("queue: dropped after 2 hours without a word", qbr["ann zed"] is None and qbr["dee dx"] is None)
+
+
+# --- review fixes: a paid buyer isn't dropped as quiet; a buyer you can't port for leaves
+lf = runtime()
+GF, TF = lf.globals(), lf.globals().T
+TF.fire("ADDON_LOADED", "PortalPro"); TF.fire("PLAYER_LOGIN")
+qbf = TF.ns.buyers
+TF.fire("CHAT_MSG_WHISPER", "need portal", "Can Not")
+TF.fire("CHAT_MSG_WHISPER", "port to darn", "Can Not")
+TF.time = TF.time + 6 * 60
+TF.tick()
+check("a numbered buyer you then can't port for leaves after 5 minutes", qbf["can not"] is None, qbf["can not"] and (qbf["can not"].cantPort, qbf["can not"].n))
+TF.fire("CHAT_MSG_WHISPER", "inv uc pls", "Pay Er")
+TF.party[1] = "Pay Er"; TF.fire("GROUP_ROSTER_UPDATE")
+TF.time = TF.time + 110 * 60
+TF.npc = "Pay Er"; GF.TradeFrame.shown = True; TF.tradeMoney = 5000
+TF.fire("TRADE_SHOW"); TF.fire("TRADE_MONEY_CHANGED")
+TF.fire("UI_INFO_MESSAGE", 0, "Trade complete.")
+TF.fire("TRADE_CLOSED"); GF.TradeFrame.shown = False
+TF.party[1] = None; TF.fire("GROUP_ROSTER_UPDATE")
+TF.time = TF.time + 11 * 60
+TF.tick()
+check("a buyer who paid isn't dropped as quiet", qbf["pay er"] is not None and (qbf["pay er"].paid or 0) > 0, qbf["pay er"] and qbf["pay er"].paid)
 
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

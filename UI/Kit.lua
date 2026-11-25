@@ -267,7 +267,44 @@ function Kit.row(parent, h)
     if near then self.dot:SetColorTexture(0.25, 1, 0.25, 1) else self.dot:SetColorTexture(0.4, 0.4, 0.4, 1) end
   end
   r:SetNear(false)
+  -- a soft gold band: "this one next"
+  r.mark = r:CreateTexture(nil, "BACKGROUND")
+  r.mark:SetAllPoints()
+  r.mark:SetColorTexture(1, 0.82, 0, 0.12)
+  function r:SetMark(on)
+    self.marked = on and true or false
+    if on then self.mark:Show() else self.mark:Hide() end
+  end
+  r:SetMark(false)
   return r
+end
+
+-- mouse-wheel scrolling for a list of rows drawn by the caller: sc.offset is the first item shown (0-based).
+-- sc:Set(total, visible) keeps the offset in range and fills sc.text ("2 more above / 5 more below");
+-- the wheel moves one row and calls onScroll().
+function Kit.scroller(parent, onScroll)
+  local sc = { offset = 0, total = 0, visible = 0 }
+  sc.text = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  function sc:Set(total, visible)
+    self.total, self.visible = total, visible
+    local max = math.max(0, total - visible)
+    self.offset = math.max(0, math.min(self.offset, max))
+    local above, below = self.offset, math.max(0, total - visible - self.offset)
+    local parts = {}
+    if above > 0 then parts[#parts + 1] = "|TInterface\\Buttons\\Arrow-Up-Up:12|t " .. above .. " more" end
+    if below > 0 then parts[#parts + 1] = below .. " more |TInterface\\Buttons\\Arrow-Down-Up:12|t" end
+    self.text:SetText(table.concat(parts, "    "))
+  end
+  parent:EnableMouseWheel(true)
+  parent:SetScript("OnMouseWheel", function(_, delta)
+    local max = math.max(0, sc.total - sc.visible)
+    local o = math.max(0, math.min(max, sc.offset - (delta > 0 and 1 or -1)))
+    if o ~= sc.offset then
+      sc.offset = o
+      if onScroll then onScroll() end
+    end
+  end)
+  return sc
 end
 
 -- a number with a label over it and a small line under it

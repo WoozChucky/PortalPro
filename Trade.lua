@@ -124,6 +124,7 @@ local function tradeDone()
     b = buyerFor(t.name); b.new = nil; b.state = "group"; b.unit = unitFor(t.name)
   end
   if not b then return end
+  b.at = now()   -- a trade is word from them
   local price, before = priceFor(b.city), b.paid or 0
   local owed = math.max(0, price - before)
   local tip = math.max(0, got - owed)

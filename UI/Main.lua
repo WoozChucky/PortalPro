@@ -36,17 +36,9 @@ local STATE_TEXT = {
   paid = "|cff40ff40PAID|r", done = "|cff808080ported|r", left = "|cff808080left|r",
   busy = "|cffff8040in a group|r", declined = "|cffff4040declined|r",
 }
-local STATE_ORDER = { paid = 1, group = 2, invited = 3, asked = 4, busy = 5, declined = 6, left = 7, done = 8 }
-
-local function sortedBuyers()
-  local list = {}
-  for _, b in pairs(buyers) do list[#list + 1] = b end
-  table.sort(list, function(a, b)
-    local oa, ob = STATE_ORDER[a.state] or 9, STATE_ORDER[b.state] or 9
-    if oa ~= ob then return oa < ob end
-    return a.at > b.at
-  end)
-  return list
+-- a group member close enough to trade
+local function inRange(b)
+  return b.unit ~= nil and safe(CheckInteractDistance, b.unit, 2) == true
 end
 
 local function onOff(v) return v and "|cff40ff40ON|r" or "|cff808080OFF|r" end
@@ -135,7 +127,7 @@ local function buildBuyers(page)
 
   local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   head:SetPoint("TOPLEFT", 2, -106)
-  head:SetText("BUYERS  |cff808080click: invite / trade - right-click: remove|r")
+  head:SetText("BUYERS  |cff808080click: trade (in range) / invite - right-click: remove|r")
 
   for i = 1, PANEL_MAX_ROWS do
     local r = Kit.row(page, ROW_H)
@@ -147,7 +139,8 @@ local function buildBuyers(page)
       if mouse == "RightButton" then
         buyers[b.key] = nil
       elseif b.unit then
-        if b.state ~= "paid" and b.state ~= "done" then openTrade(b) end
+        if not inRange(b) then say(b.name .. " isn't in trade range yet.")
+        elseif b.state ~= "paid" and b.state ~= "done" then openTrade(b) end
       else
         b.declinedAt = nil
         invite(b)
@@ -156,19 +149,19 @@ local function buildBuyers(page)
     end)
     rows[i] = r
   end
+  ns.scroll = Kit.scroller(page, function() ns.refresh() end)
+  ns.scroll.text:SetPoint("TOPRIGHT", -2, -106)
 
-  local defs = { { "listen", "Listen" }, { "inviteAsks", "Invite" }, { "autoTrade", "Trade" }, { "autoKick", "Kick" } }
+  local defs = { { "listen", "Listen" }, { "inviteAsks", "Invite" }, { "autoKick", "Kick" } }
   local tips = {
     listen = "Look for buyers in Trade, General, LFG, say and yell.",
     inviteAsks = "Invite people who ask for a portal in public chat (whispers are always invited).",
-    autoTrade = "Open trade with buyers in the group who are in range and have not paid.",
     autoKick = "Kick buyers from the group once they went through the portal.",
   }
   for i, d in ipairs(defs) do
     local key = d[1]
     local t = Kit.toggle(page, 68, 22, d[2], function() return ns.DB[key] end, function(v)
       ns.DB[key] = v
-      if key == "autoTrade" then PP.tradeBlocked = nil end
       ns.refresh()
     end)
     t.key = key
@@ -180,7 +173,7 @@ local function buildBuyers(page)
     local half = math.floor((w - 4) / 2)
     panel.ad:SetWidth(half)
     panel.accept:SetWidth(half)
-    local tw = math.floor((w - 3 * 4) / #toggles)
+    local tw = math.floor((w - (#toggles - 1) * 4) / #toggles)
     for i, t in ipairs(toggles) do
       t:SetWidth(tw)
       t:ClearAllPoints()
@@ -250,14 +243,23 @@ ns.refresh = function()
   end
   panel.status:SetText(status)
 
-  local list = sortedBuyers()
+  -- the queue: waiting in order, then just ported, then cities you have no portal to
+  local list = ns.queueList()
+  local visible = panel.visibleRows or 6
+  ns.scroll:Set(#list, visible)
+  local nextUp
+  for _, b in ipairs(list) do
+    if ns.isWaiting(b) and b.state ~= "paid" and inRange(b) then nextUp = b; break end
+  end
   for i, row in ipairs(rows) do
-    local b = i <= (panel.visibleRows or 6) and list[i] or nil
+    local b = i <= visible and list[ns.scroll.offset + i] or nil
     row.buyer = b
     if b then
       local c = b.city and CITY[b.city]
-      row.name:SetText("|cff" .. Kit.classHex(b.class) .. b.name .. "|r")
-      row.sub:SetText((c and c.name or "?") .. "  |cff808080" .. sourceText(b) .. " - " .. age(b.at) .. "|r")
+      local p = ns.place(b)
+      row.name:SetText((p and ("|cffffd200#" .. p .. "|r ") or "") .. "|cff" .. Kit.classHex(b.class) .. b.name .. "|r")
+      row.sub:SetText((c and c.name or "?") .. "  |cff808080" .. sourceText(b) .. " - " .. age(b.since or b.at) .. "|r")
+      row:SetMark(b == nextUp)
       row.icon:SetIcon(cityIcon(c))
       row:SetNear(b.unit ~= nil and b.state ~= "done")
       row.right:SetText(b.cantPort and "|cff808080no portal|r"

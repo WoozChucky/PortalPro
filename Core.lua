@@ -48,11 +48,12 @@ local DEFAULTS = {
   inviteAsks = true,    -- invite people who ask in public chat
   autoInvite = true,    -- invite people who whisper "inv", "port", a city
   whisper = true,       -- whisper replies (only where the realm allows addon chat)
-  autoTrade = true,     -- open trade with buyers in range
   autoKick = true,      -- kick buyers once they went through the portal
   thanks = true,        -- a line in party chat after every paid trade: who paid what
   sound = true,
   shown = true,
+  queues = {},          -- [character] = the waiting orders, saved at logout / reload
+  nextOrder = 1,        -- the next queue number
 }
 
 

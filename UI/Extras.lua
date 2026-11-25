@@ -7,7 +7,6 @@ local say = ns.say
 local Kit = ns.Kit
 
 local ICON = "Interface\\Icons\\Spell_Arcane_PortalOrgrimmar"
-local WAITING = { asked = true, invited = true, group = true, paid = true }
 local mm, bar, toast
 
 local function ui()
@@ -15,11 +14,11 @@ local function ui()
   return ns.DB.ui
 end
 
--- buyers waiting for a portal you have, and how many of them are in your group
+-- the queue: orders waiting, and how many of them are in your group
 local function waiting()
   local n, inGroup = 0, 0
   for _, b in pairs(buyers) do
-    if not b.cantPort and WAITING[b.state] then
+    if ns.isWaiting(b) then
       n = n + 1
       if b.state == "group" or b.state == "paid" then inGroup = inGroup + 1 end
     end
@@ -73,7 +72,7 @@ end
 function ns.updateExtras()
   local n, inGroup = waiting()
   if mm then mm:SetBadge(n) end
-  if bar then bar.text:SetText(n .. " buyers · " .. inGroup .. " in group") end
+  if bar then bar.text:SetText(n .. " in queue · " .. inGroup .. " in group") end
 end
 
 function ns.buildExtras()
@@ -81,7 +80,7 @@ function ns.buildExtras()
     if mouse == "RightButton" then PP.postAd() else PP.togglePanel() end
   end, function()
     local n, inGroup = waiting()
-    return "PortalPro\n|cffffffff" .. n .. " buyers, " .. inGroup .. " in group|r\n"
+    return "PortalPro\n|cffffffff" .. n .. " in queue, " .. inGroup .. " in group|r\n"
       .. "|cff808080Click: window - Right-click: post the ad - Drag: move|r"
   end, 225)
   bar = Kit.compactBar("PortalProCompact", ICON, ns.frameSave("compact"), "Post ad",

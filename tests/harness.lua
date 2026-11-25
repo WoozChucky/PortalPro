@@ -64,7 +64,7 @@ T.channels = { { 1, "General - Ironforge", 1 }, { 2, "Trade - City", 2 } }
 
 function GetBuildInfo() return "1.16.1", "1", "Nov 2026", 11601 end
 function GetTime() return T.time end
-function time(tt) if tt then return os.time(tt) end return math.floor(T.time) end
+function time(tt) if tt then return os.time(tt) end return math.floor(T.time + (T.wallOffset or 0)) end
 function date(f, ts) return os.date(f, ts or math.floor(T.time)) end
 function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end T.prints[#T.prints + 1] = table.concat(t, " ") end
 function strtrim(s) return (string.gsub(s, "^%s*(.-)%s*$", "%1")) end
