@@ -262,6 +262,11 @@ SlashCmdList.PORTALPRO("thanks reset")
 SlashCmdList.PORTALPRO("thanks on")
 SlashCmdList.PORTALPRO("messages")
 mf = lua.globals().PortalProMessages
+
+_anch = lua.eval("function(o, r) local ps = o and rawget(o, 'points') or {} for _, p in ipairs(ps) do if rawequal(p[2], r) then return true end end return false end")
+def anchored_to(obj, rel): return bool(_anch(obj, rel))
+check("messages tab: tokens line sits under its preview", anchored_to(mf.ad.tk, mf.ad.pv) and anchored_to(mf.thanks.tk, mf.thanks.pv))
+check("messages tab: thank-you editor starts under the ad editor", anchored_to(mf.thanks.label, mf.ad.tk))
 check("messages window opens", mf.shown == True)
 eb = mf.ad.eb
 check("ad box shows the standard template", eb.text == 'WTS Portals {route} - {price} each. Whisper me "inv" + the city!', eb.text)

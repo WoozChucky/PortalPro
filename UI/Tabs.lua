@@ -187,33 +187,36 @@ StaticPopupDialogs.PORTALPRO_RESET_LEDGER = {
 local function setChecked(cb, v) if cb.SetChecked then cb:SetChecked(v and true or false) end end
 
 -- one editor: label, Default button, the box, a live preview and the tokens it knows
-local function addEditor(parent, y, def)
+-- each part hangs from the one above, so a preview or tokens line that wraps pushes the rest down.
+-- above: the editor before this one (nil for the first)
+local function addEditor(parent, above, def)
   local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  label:SetPoint("TOPLEFT", 4, y)
+  if above then label:SetPoint("TOPLEFT", above.tk, "BOTTOMLEFT", -2, -12)
+  else label:SetPoint("TOPLEFT", 4, -4) end
   label:SetText(def.label)
 
   local reset = button(parent, 70, 20, "Default")
-  reset:SetPoint("TOPRIGHT", -4, y + 3)
 
   local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
   eb:SetHeight(20)
-  eb:SetPoint("TOPLEFT", 12, y - 18)
+  eb:SetPoint("TOPLEFT", label, "TOPLEFT", 8, -18)
+  reset:SetPoint("BOTTOMRIGHT", eb, "TOPRIGHT", 4, 1)
   eb:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
   eb:SetAutoFocus(false)
   eb:SetMaxLetters(255)
 
   local pv = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  pv:SetPoint("TOPLEFT", 6, y - 42)
+  pv:SetPoint("TOPLEFT", label, "TOPLEFT", 2, -42)
   pv:SetPoint("RIGHT", parent, "RIGHT", -6, 0)
   pv:SetJustifyH("LEFT")
 
   local tk = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  tk:SetPoint("TOPLEFT", 6, y - 70)
+  tk:SetPoint("TOPLEFT", pv, "BOTTOMLEFT", 0, -3)
   tk:SetPoint("RIGHT", parent, "RIGHT", -6, 0)
   tk:SetJustifyH("LEFT")
   tk:SetText(def.tokens)
 
-  local ed = { eb = eb, pv = pv }
+  local ed = { eb = eb, pv = pv, tk = tk, label = label }
   function ed.update()
     local raw = eb:GetText()
     local text = def.preview(type(raw) == "string" and raw or "")
@@ -249,14 +252,14 @@ local function buildMessages(mf)
   hint:SetPoint("BOTTOMRIGHT", -4, 0)
   hint:SetText("Enter saves - Escape undoes")
 
-  mf.ad = addEditor(mf, -4, {
+  mf.ad = addEditor(mf, nil, {
     label = "Trade ad", default = AD_DEFAULT, tokens = AD_TOKENS,
     get = function() return (ns.DB.ad and ns.DB.ad ~= "") and ns.DB.ad or nil end,
     set = function(v) ns.DB.ad = v end,
     preview = function(t) return adText(t ~= "" and t or AD_DEFAULT) end,
   })
 
-  mf.thanks = addEditor(mf, -104, {
+  mf.thanks = addEditor(mf, mf.ad, {
     label = "Party thank-you", default = THANKS_DEFAULT, tokens = THANKS_TOKENS
       .. "\n|cff808080A trade that falls short always says how much is missing instead.|r",
     get = function() return ns.DB.thanksText end,
@@ -266,7 +269,7 @@ local function buildMessages(mf)
 
   local cb = CreateFrame("CheckButton", nil, mf, "UICheckButtonTemplate")
   cb:SetSize(22, 22)
-  cb:SetPoint("TOPLEFT", 130, -100)
+  cb:SetPoint("TOPLEFT", mf.thanks.label, "TOPLEFT", 126, 4)
   local cbText = mf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   cbText:SetPoint("LEFT", cb, "RIGHT", 2, 0)
   cbText:SetText("post it in party after every paid trade")
