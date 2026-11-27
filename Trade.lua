@@ -89,6 +89,14 @@ local function targetMoney()
   return safe(GetTargetTradeMoney) or 0
 end
 
+-- a trade EnchantPro claims (an enchant buyer of it, or an enchant cast in the trade) is not a portal sale
+local function enchantTrade(name)
+  local E = _G.EnchantPro
+  if type(E) ~= "table" or type(E.claims) ~= "function" then return false end
+  local ok, mine = pcall(E.claims, name)
+  return ok and mine == true
+end
+
 local function tradeBuyer()
   local t = PP.trade
   return t and t.name and buyers[string.lower(t.name)] or nil
@@ -100,7 +108,7 @@ function ns.dockState()
   local t = PP.trade
   if not t then return nil end
   local b = tradeBuyer()
-  if not b and not (t.name and unitFor(t.name)) then return nil end
+  if not b and (not (t.name and unitFor(t.name)) or enchantTrade(t.name)) then return nil end
   local city = (b and b.city and CITY[b.city]) or PP.castCity
   local owed = math.max(0, priceFor(b and b.city) - (b and b.paid or 0))
   local got = t.money or 0
@@ -120,7 +128,7 @@ local function tradeDone()
   if got <= 0 then return end
   -- only buyers count: a trade with someone who is neither on the list nor in the group is not a portal sale
   local b = t.name and buyers[string.lower(t.name)]
-  if not b and t.name and unitFor(t.name) then
+  if not b and t.name and unitFor(t.name) and not enchantTrade(t.name) then
     b = buyerFor(t.name); b.new = nil; b.state = "group"; b.unit = unitFor(t.name)
   end
   if not b then return end
@@ -143,6 +151,8 @@ function PP.accept()
   local tf = _G.TradeFrame
   if not (tf and tf:IsShown()) then return end
   local b = tradeBuyer()
+  -- an enchant trade: EnchantPro's to check, not a portal price
+  if not b and PP.trade and enchantTrade(PP.trade.name) then pcall(AcceptTrade); return end
   local want, got = priceFor(b and b.city), PP.trade and PP.trade.money or 0
   if want > 0 and got < want and not (PP.acceptArmed and now() - PP.acceptArmed < 3) then
     PP.acceptArmed = now()

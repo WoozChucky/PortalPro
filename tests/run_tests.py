@@ -661,5 +661,42 @@ rc = row_of(TH.ns, "can not", rgh)
 if rc is not None: rc.scripts.OnClick(rc, "RightButton")
 check("block: a plain right-click only removes", qbh["can not"] is None and GH.PortalProDB.blocked["can not"] is None)
 
+
+# --- an enchant trade (EnchantPro's) with someone in the group isn't a portal sale
+def group_trade(Gx, Tx, who, amount):
+    Tx.party[1] = who; Tx.fire("GROUP_ROSTER_UPDATE")
+    Tx.npc = who; Gx.TradeFrame.shown = True; Tx.tradeMoney = amount
+    Tx.fire("TRADE_SHOW"); Tx.fire("TRADE_MONEY_CHANGED")
+    dock = Tx.ns.dockState()
+    Tx.fire("UI_INFO_MESSAGE", 0, "Trade complete.")
+    Tx.fire("TRADE_CLOSED"); Gx.TradeFrame.shown = False
+    return dock
+le = runtime()
+GE, TE = le.globals(), le.globals().T
+TE.fire("ADDON_LOADED", "PortalPro"); TE.fire("PLAYER_LOGIN")
+GE.PortalProDB.thanks = True
+claimed = le.eval("{}")
+GE.EnchantPro = le.eval("function(c) return { claims = function(name) return c[name] == true end } end")(claimed)
+claimed["Awar Lock"] = True
+n0, c0 = len(GE.PortalProDB.ledger), len(TE.calls)
+dock_e = group_trade(GE, TE, "Awar Lock", 500)
+party = [TE.calls[i] for i in range(c0 + 1, len(TE.calls) + 1) if TE.calls[i][1] == "SendChatMessage"]
+check("enchant trade: not in PortalPro's ledger", len(GE.PortalProDB.ledger) == n0, len(GE.PortalProDB.ledger) - n0)
+check("enchant trade: nothing said in party", len(party) == 0, [p[2] for p in party])
+check("enchant trade: not listed as a portal buyer", TE.ns.buyers["awar lock"] is None)
+check("enchant trade: no portal dock", dock_e is None)
+TE.party[1] = None; TE.fire("GROUP_ROSTER_UPDATE")
+n1 = len(GE.PortalProDB.ledger)
+dock_p = group_trade(GE, TE, "Port Guy", 5000)
+check("a group member EnchantPro doesn't know still pays for a portal", len(GE.PortalProDB.ledger) == n1 + 1 and dock_p is not None)
+TE.party[1] = "Awar Lock"; TE.fire("GROUP_ROSTER_UPDATE")
+TE.npc = "Awar Lock"; GE.TradeFrame.shown = True; TE.tradeMoney = 500
+TE.fire("TRADE_SHOW"); TE.fire("TRADE_MONEY_CHANGED")
+na = len([1 for i in range(1, len(TE.calls) + 1) if TE.calls[i][1] == "AcceptTrade"])
+GE.PortalPro.accept()
+nb = len([1 for i in range(1, len(TE.calls) + 1) if TE.calls[i][1] == "AcceptTrade"])
+check("enchant trade: PortalPro's accept key accepts without a portal-price warning", nb == na + 1)
+TE.fire("TRADE_CLOSED"); GE.TradeFrame.shown = False
+
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)
