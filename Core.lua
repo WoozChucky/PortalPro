@@ -53,6 +53,7 @@ local DEFAULTS = {
   sound = true,
   shown = true,
   queues = {},          -- [character] = the waiting orders, saved at logout / reload
+  blocked = {},         -- [lower name] = name: never listed, never answered
   nextOrder = 1,        -- the next queue number
 }
 

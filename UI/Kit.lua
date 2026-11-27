@@ -49,6 +49,30 @@ function Kit.tooltip(widget, text)
   widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- A buyer's last lines, kept for their row's tooltip: b.said = { { text, where, when = time(), got, miss } },
+-- oldest first. got: what the line was read as; miss: something named that you can't do.
+function Kit.noteSaid(b, text, where, got, miss)
+  b.said = b.said or {}
+  table.insert(b.said, { text = text, where = where, when = time(), got = got, miss = miss })
+  while #b.said > 5 do table.remove(b.said, 1) end
+end
+
+-- the tooltip: what they wrote and what each line was read as, then how to remove or block them
+function Kit.saidTip(b)
+  local lines = { "|cffffd100" .. (b.name or "?") .. ((type(b.said) == "table" and #b.said > 0) and " wrote:|r" or "|r") }
+  for _, m in ipairs(type(b.said) == "table" and b.said or {}) do
+    local secs = math.max(0, time() - (m.when or time()))
+    local ago = secs < 60 and "now" or secs < 3600 and (math.floor(secs / 60) .. "m") or (math.floor(secs / 3600) .. "h")
+    local w = string.match(m.where or "", "^(.-)%s+%-%s+") or m.where or ""
+    lines[#lines + 1] = "|cff808080[" .. w .. ", " .. ago .. "]|r " .. tostring(m.text or "")
+      .. (m.got and ("  |cff40ff40-> " .. m.got .. "|r")
+        or m.miss and ("  |cffff4040-> " .. m.miss .. " (you can't)|r")
+        or "  |cff808080-> nothing named|r")
+  end
+  lines[#lines + 1] = "|cff808080Right-click: remove.  Shift-right-click: block - never listed again.|r"
+  return table.concat(lines, "\n")
+end
+
 function Kit.toggleShown(f) if f then if f:IsShown() then f:Hide() else f:Show() end end end
 
 -- an on/off button: green label when on, grey when off. get() reads the setting, set(v) stores it.

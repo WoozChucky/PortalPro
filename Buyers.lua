@@ -39,6 +39,7 @@ local function request(sender, text, src, where, guid)
   if isSecret(sender) or isSecret(text) or type(sender) ~= "string" or type(text) ~= "string" then return end
   local name = shortName(sender)
   if not name or string.lower(name) == string.lower(ns.myName) then return end
+  if ns.DB.blocked and ns.DB.blocked[string.lower(name)] then return end
   local lower = clean(text)
   local intent, city
   if src == "whisper" then intent, city = whisperIntent(lower) else intent, city = channelIntent(lower) end
@@ -63,6 +64,9 @@ local function request(sender, text, src, where, guid)
   local cityChanged = city and b.city ~= city.key
   if city then b.city = city.key end
   b.at, b.src, b.where = t, src, where
+  -- what they typed and what it was read as, for the row's tooltip (the last 5 lines)
+  ns.Kit.noteSaid(b, text, where or src, city and city.spell and city.name or nil,
+    city and not city.spell and city.name or nil)
   ns.enqueue(b)
   if not b.class and type(guid) == "string" and not isSecret(guid) and guid ~= "" then
     local ok, _, cls = pcall(GetPlayerInfoByGUID, guid)
@@ -108,3 +112,30 @@ end
 ns.buyerFor = buyerFor
 ns.cityLine = cityLine
 ns.request = request
+
+-- blocked characters: off the list now, never listed or answered again (shift-right-click, /pp block)
+local function block(name)
+  name = strtrim(name or "")
+  if name == "" then return end
+  local short = shortName(name) or name
+  local key = string.lower(short)
+  local b = buyers[key]
+  ns.DB.blocked[key] = b and b.name or short
+  buyers[key] = nil
+  say(ns.DB.blocked[key] .. " blocked - never listed again. /pp unblock " .. ns.DB.blocked[key] .. " to undo.")
+  if ns.refresh then ns.refresh() end
+end
+local function unblock(name)
+  local key = string.lower(shortName(strtrim(name or "")) or "")
+  if not ns.DB.blocked[key] then say("Not blocked: " .. (name or "") .. ". /pp block lists who is."); return end
+  say(ns.DB.blocked[key] .. " unblocked.")
+  ns.DB.blocked[key] = nil
+end
+local function listBlocked()
+  local names = {}
+  for _, n in pairs(ns.DB.blocked) do names[#names + 1] = n end
+  table.sort(names)
+  say(#names == 0 and "Nobody blocked. Shift-right-click a buyer's line to block them."
+    or ("Blocked: " .. table.concat(names, ", ") .. ". /pp unblock <name> to undo."))
+end
+ns.block, ns.unblock, ns.listBlocked = block, unblock, listBlocked

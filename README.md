@@ -7,6 +7,8 @@ A WoW Forever addon for mages who sell portals. It automates as much of the job 
 - **Finds buyers** in Trade, General, LFG, say, yell and whispers ("WTB port to UC", "inv org").
 - **Invites** buyers and replies to them.
 - **Queue:** every buyer gets a number when they first ask and keeps it; the list shows them in that order with how long they've waited, scrolls with the mouse wheel, and survives `/reload`, disconnects and restarts. An order stays until they went through, you right-click it away, or they've been quiet for 2 hours. The first reply tells a buyer their place.
+- **Hover a buyer** to see what they wrote (their last 5 lines, where and when) and which city each line was read as.
+- **Block:** shift-right-click a buyer's line and that character is never listed or answered again. `/pp block` lists them, `/pp block <name>` blocks by name, `/pp unblock <name>` undoes it.
 - **Click to trade:** click a buyer's line when they're in your group and in range (the first one is highlighted).
 - **Trade dock:** a panel beside the trade window shows the city, the payment against the price, and a Cast button that glows once they've paid.
 - **Cast button** that always holds the portal the group needs.

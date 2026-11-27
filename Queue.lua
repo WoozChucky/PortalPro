@@ -73,6 +73,13 @@ local function saveQueue()
         if TIMES[k] and type(v) == "number" then c[k] = wall - (t - v) else c[k] = v end
       end
     end
+    -- what they wrote (wall-clock times already), for the row's tooltip
+    if type(b.said) == "table" then
+      c.said = {}
+      for i, m in ipairs(b.said) do
+        c.said[i] = { text = m.text, where = m.where, when = m.when, got = m.got, miss = m.miss }
+      end
+    end
     list[#list + 1] = c
   end
   ns.DB.queues = ns.DB.queues or {}

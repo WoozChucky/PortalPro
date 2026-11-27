@@ -583,6 +583,8 @@ okr = qbr["ann zed"] is not None and qbr["ben yo"] is not None
 check("restore: the queue is back after a restart", okr and (qbr["ann zed"].n, qbr["ben yo"].n) == (1, 2), okr and (qbr["ann zed"].n, qbr["ben yo"].n))
 check("restore: waiting time carries on", okr and abs((TR.time - qbr["ann zed"].since) - (wait_before + 60)) <= 1)
 check("restore: not in the group any more", okr and qbr["ben yo"].unit is None)
+sdr = okr and TR.ns.buyers["ann zed"] and lr.eval("rawget")(qbr["ann zed"], "said")
+check("restore: what they wrote is kept too", bool(sdr) and sdr[1].text == "inv uc pls", sdr and len(sdr))
 TR.fire("CHAT_MSG_WHISPER", "inv uc pls", "Dee Dx")
 check("restore: numbers carry on", qbr["dee dx"].n == 28, qbr["dee dx"].n)
 TR.time = TR.time + 7201
@@ -611,6 +613,53 @@ TF.party[1] = None; TF.fire("GROUP_ROSTER_UPDATE")
 TF.time = TF.time + 11 * 60
 TF.tick()
 check("a buyer who paid isn't dropped as quiet", qbf["pay er"] is not None and (qbf["pay er"].paid or 0) > 0, qbf["pay er"] and qbf["pay er"].paid)
+
+
+# --- hover a buyer: what they wrote and what it was read as; shift-right-click blocks them for good
+lh = runtime()
+GH, TH = lh.globals(), lh.globals().T
+TH.fire("ADDON_LOADED", "PortalPro"); TH.fire("PLAYER_LOGIN")
+qbh, rgh = TH.ns.buyers, lh.eval("rawget")
+GH.PortalPro.togglePanel(True)
+TH.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+TH.fire("CHAT_MSG_CHANNEL", "need port to darn", "Can Not", "", "2. Trade", "", "", 2, 2, "Trade")
+TH.ns.refresh()
+def tip_of(key):
+    r = row_of(TH.ns, key, rgh)
+    GH.GameTooltip.text = None
+    if r is not None and r.scripts.OnEnter: r.scripts.OnEnter(r)
+    return rgh(GH.GameTooltip, "text") or ""
+ta = tip_of("ann zed")
+check("hover: the tooltip shows what they wrote and the city it was read as", "inv uc pls" in ta and "Undercity" in ta and "whisper" in ta, ta)
+check("hover: lines on separate rows", "\n" in ta, ta)
+tc = tip_of("can not")
+check("hover: a city you can't port to shows, with where it was said", "need port to darn" in tc and "Trade" in tc and "can't" in tc, tc)
+for i in range(1, 8):
+    TH.fire("CHAT_MSG_WHISPER", "inv uc pls " + str(i), "Ann Zed")
+sdh = rgh(qbh["ann zed"], "said") or []
+check("hover: keeps the last 5 lines", len(sdh) == 5 and sdh[5].text == "inv uc pls 7", len(sdh))
+ra = row_of(TH.ns, "ann zed", rgh)
+TH.shift = True
+if ra is not None: ra.scripts.OnClick(ra, "RightButton")
+TH.shift = False
+blh = rgh(GH.PortalProDB, "blocked")
+check("block: shift-right-click takes them off and remembers them", qbh["ann zed"] is None and blh is not None and blh["ann zed"] is not None)
+nt = len(TH.calls)
+TH.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+check("block: they're never listed again", qbh["ann zed"] is None)
+check("block: no invite, no answer", not any(TH.calls[i][1] in ("SendChatMessage", "InviteUnit", "C_PartyInfo.InviteUnit") for i in range(nt + 1, len(TH.calls) + 1)),
+      [TH.calls[i][1] for i in range(nt + 1, len(TH.calls) + 1)])
+GH.SlashCmdList.PORTALPRO("unblock ann zed")
+TH.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+check("block: /pp unblock lets them back", qbh["ann zed"] is not None)
+GH.SlashCmdList.PORTALPRO("block Some Body")
+TH.fire("CHAT_MSG_WHISPER", "inv uc pls", "Some Body")
+check("block: /pp block Name blocks by name", qbh["some body"] is None and GH.PortalProDB.blocked["some body"] is not None)
+GH.SlashCmdList.PORTALPRO("block")
+TH.ns.refresh()
+rc = row_of(TH.ns, "can not", rgh)
+if rc is not None: rc.scripts.OnClick(rc, "RightButton")
+check("block: a plain right-click only removes", qbh["can not"] is None and GH.PortalProDB.blocked["can not"] is None)
 
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

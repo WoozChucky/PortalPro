@@ -104,6 +104,7 @@ function UninviteUnit(n) call("UninviteUnit", n) end
 function InitiateTrade(u) call("InitiateTrade", u) end
 function AcceptTrade() call("AcceptTrade") end
 function PlaySound(id) call("PlaySound", id) end
+function IsShiftKeyDown() return T.shift and true or false end
 function SendChatMessage(text, kind, lang, target) call("SendChatMessage", text, kind, target) end
 function ChatFrame_OpenChat(text) call("OpenChat", text) end
 function GetChannelName(i)

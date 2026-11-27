@@ -330,6 +330,7 @@ local HELP = {
   "/pp runecost 18s - what a Rune of Portals costs you (read at the vendor by itself)",
   "/pp ledger reset - delete the ledger (asks twice)",
   "/pp test <line> - would this chat line count as a buyer?",
+  "/pp block - who you blocked.  /pp block <name> - never list them (or shift-right-click their line).  /pp unblock <name>",
   "/pp compact - fold the window to one line (again: back) - /pp minimap - hide or show the minimap button",
   "Keys: Game Menu > Key Bindings > PortalPro (Post ad, Cast portal, Accept trade).",
 }
@@ -421,6 +422,10 @@ SlashCmdList.PORTALPRO = function(msg)
     ns.DB.runeCost = c
     say("Rune of Portals: " .. money(c) .. " each, from now on.")
     PP.ledgerRefresh()
+  elseif cmd == "block" then
+    if rest == "" then ns.listBlocked() else ns.block(rest) end
+  elseif cmd == "unblock" then
+    ns.unblock(rest)
   elseif cmd == "test" then
     local lower = clean(rest)
     local ok, city = channelIntent(lower)

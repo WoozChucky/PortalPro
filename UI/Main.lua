@@ -127,7 +127,7 @@ local function buildBuyers(page)
 
   local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   head:SetPoint("TOPLEFT", 2, -106)
-  head:SetText("BUYERS  |cff808080click: trade (in range) / invite - right-click: remove|r")
+  head:SetText("BUYERS  |cff808080click: trade (in range) / invite - right-click: remove (shift: block)|r")
 
   for i = 1, PANEL_MAX_ROWS do
     local r = Kit.row(page, ROW_H)
@@ -136,7 +136,9 @@ local function buildBuyers(page)
     r:SetScript("OnClick", function(self, mouse)
       local b = self.buyer
       if not b then return end
-      if mouse == "RightButton" then
+      if mouse == "RightButton" and IsShiftKeyDown() then
+        ns.block(b.name)
+      elseif mouse == "RightButton" then
         buyers[b.key] = nil
       elseif b.unit then
         if not inRange(b) then say(b.name .. " isn't in trade range yet.")
@@ -147,6 +149,14 @@ local function buildBuyers(page)
       end
       ns.refresh()
     end)
+    -- hover: what they wrote and what it was read as
+    r:SetScript("OnEnter", function(self)
+      if not self.buyer then return end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(Kit.saidTip(self.buyer), 1, 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
     rows[i] = r
   end
   ns.scroll = Kit.scroller(page, function() ns.refresh() end)
