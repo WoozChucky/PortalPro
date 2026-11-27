@@ -97,6 +97,16 @@ local function enchantTrade(name)
   return ok and mine == true
 end
 
+-- Is a trade with this name PortalPro's? A portal buyer, or someone in the group of a mage selling portals.
+-- EnchantPro asks before it takes gold alone for an enchant payment.
+function PP.claims(name)
+  if PP.off or type(name) ~= "string" then return false end
+  local key = string.lower(ns.shortName(name) or "")
+  if key == "" then return false end
+  if buyers[key] then return true end
+  return #ns.known > 0 and unitFor(name) ~= nil
+end
+
 local function tradeBuyer()
   local t = PP.trade
   return t and t.name and buyers[string.lower(t.name)] or nil

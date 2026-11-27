@@ -45,6 +45,45 @@ local function ledgerAdd(e)
 end
 
 -- the sums of the entries from `since` on (a time()), or all time
+-- Once: until 0.9.1 both addons logged some trades. A "trade" here that EnchantPro logged as an enchant sale
+-- (same name, within 15 s) was an enchant: taken out, and out of the totals.
+-- an enchant sale to n in the 30 minutes from t: gold handed over at t was paying for it
+local function saleAfter(L, n, t)
+  for _, o in ipairs(L) do
+    if o.k == "sale" and o.n == n and (o.t or 0) >= (t or 0) and (o.t or 0) - (t or 0) <= 1800 then return true end
+  end
+  return false
+end
+
+local function splitLedger()
+  if ns.DB.ledgerSplit then return end
+  ns.DB.ledgerSplit = true
+  local other = type(EnchantProDB) == "table" and type(EnchantProDB.ledger) == "table" and EnchantProDB.ledger
+  if not other then return end
+  local L, keep, gone = ns.DB.ledger, {}, 0
+  for _, e in ipairs(L) do
+    local drop = false
+    if e.k == "trade" then
+      for _, o in ipairs(other) do
+        if o.n == e.n and math.abs((o.t or 0) - (e.t or 0)) <= 15
+          and (o.k == "sale" or (o.k == "pay" and saleAfter(other, o.n, o.t))) then drop = true; break end
+      end
+    end
+    if drop then
+      local T = ns.DB.totals
+      T.income, T.tips, T.trades = T.income - (e.g or 0), T.tips - (e.tip or 0), T.trades - 1
+      gone = gone + 1
+    else
+      keep[#keep + 1] = e
+    end
+  end
+  if gone > 0 then
+    for i = #L, 1, -1 do L[i] = nil end
+    for i, e in ipairs(keep) do L[i] = e end
+    ns.say(gone .. " enchant trade(s) EnchantPro had logged too were taken out of this ledger.")
+  end
+end
+
 local function ledgerSum(since)
   if not since then return ns.DB.totals end
   local T = newTotals()
@@ -138,6 +177,7 @@ ns.owing = owing
 ns.DEFAULT_RUNE_COST = DEFAULT_RUNE_COST
 ns.newTotals = newTotals
 ns.ledgerAdd = ledgerAdd
+ns.splitLedger = splitLedger
 ns.ledgerSum = ledgerSum
 ns.net = net
 ns.servedPaidLate = servedPaidLate

@@ -228,6 +228,7 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
   if ev == "ADDON_LOADED" then
     if a1 == ADDON then initDB() end
   elseif ev == "PLAYER_LOGIN" then
+    ns.splitLedger()
     -- mages only: on any other class nothing is built, heard or run (the saved ledger is left as it is)
     local ok, _, classFile = pcall(UnitClass, "player")
     if not ok or isSecret(classFile) or classFile ~= "MAGE" then

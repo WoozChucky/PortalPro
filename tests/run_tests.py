@@ -698,5 +698,41 @@ nb = len([1 for i in range(1, len(TE.calls) + 1) if TE.calls[i][1] == "AcceptTra
 check("enchant trade: PortalPro's accept key accepts without a portal-price warning", nb == na + 1)
 TE.fire("TRADE_CLOSED"); GE.TradeFrame.shown = False
 
+
+# --- PortalPro.claims(name): EnchantPro asks whose a gold-only trade is
+lc = runtime()
+GC, TC = lc.globals(), lc.globals().T
+TC.fire("ADDON_LOADED", "PortalPro"); TC.fire("PLAYER_LOGIN")
+TC.fire("CHAT_MSG_WHISPER", "inv uc pls", "Ann Zed")
+check("PortalPro.claims: a portal buyer", GC.PortalPro.claims("Ann Zed") is True)
+TC.party[2] = "Grp Mate"; TC.fire("GROUP_ROSTER_UPDATE")
+check("PortalPro.claims: someone in the group", GC.PortalPro.claims("Grp Mate") is True)
+check("PortalPro.claims: a stranger isn't", GC.PortalPro.claims("Some Walkin") is False and GC.PortalPro.claims(None) is False)
+
+# --- one-time cleanup: portal "trade" entries that were really enchant trades (both ledgers had them)
+pre_d = """
+EnchantProDB = { ledger = {
+  { t = 1003, k = "sale", n = "Awar Lock", en = "x", mode = "mats", p = 0, g = 500, tip = 500 },
+  { t = 1000, k = "pay", n = "Port Guy", g = 5000 },
+  { t = 2000, k = "pay", n = "Ench Pre", g = 3000 },
+  { t = 2300, k = "sale", n = "Ench Pre", en = "x", mode = "mats", p = 0, g = 0, pre = 3000, tip = 3000 },
+} }
+PortalProDB = { ledger = {
+  { t = 1002, k = "trade", n = "Port Guy", g = 5000, tip = 0, p = 5000 },
+  { t = 1004, k = "trade", n = "Awar Lock", g = 500, tip = 0, p = 5000 },
+  { t = 9000, k = "trade", n = "Awar Lock", g = 5000, tip = 0, p = 5000 },
+  { t = 2001, k = "trade", n = "Ench Pre", g = 3000, tip = 0, p = 5000 },
+}, totals = { income = 13500, tips = 0, trades = 4, casts = 0, runeCost = 0, served = 0, short = 0, unpaid = 0 } }
+"""
+ld = runtime(pre=pre_d)
+GD, TD = ld.globals(), ld.globals().T
+TD.fire("ADDON_LOADED", "PortalPro"); TD.fire("PLAYER_LOGIN")
+LD = GD.PortalProDB.ledger
+kd = [(LD[i].n, LD[i].t) for i in range(1, len(LD) + 1)]
+check("cleanup: an enchant trade (or an enchant prepayment) that also landed here is taken out", kd == [("Port Guy", 1002), ("Awar Lock", 9000)], kd)
+check("cleanup: totals follow", GD.PortalProDB.totals.income == 10000 and GD.PortalProDB.totals.trades == 2,
+      (GD.PortalProDB.totals.income, GD.PortalProDB.totals.trades))
+check("cleanup: runs once", GD.PortalProDB.ledgerSplit is True)
+
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)
